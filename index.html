@@ -57,14 +57,16 @@
             </button>
         </nav>
         <div class="p-4 border-t border-gray-800 space-y-2">
-            <!-- BOTÓN ACTUALIZADO PARA NUEVO SISTEMA -->
             <button onclick="openModalExportReport()" class="w-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-bold shadow-lg transition-all">
                 <i data-lucide="monitor-smartphone" class="w-4 h-4"></i> Exportar Reporte CEO
             </button>
-            <button onclick="saveToCloudBtn()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all">
-                <i data-lucide="cloud-upload" class="w-4 h-4"></i> Guardar en Nube
+            <button onclick="saveToCloudBtn()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all relative overflow-hidden group">
+                <i data-lucide="cloud-upload" class="w-4 h-4 group-hover:-translate-y-1 transition-transform"></i> Guardar en Nube
             </button>
-            <p class="text-[10px] text-gray-500 text-center mt-1" id="last-sync">No sincronizado</p>
+            <div class="text-[10px] text-gray-500 text-center mt-1 flex flex-col gap-0.5">
+                <span id="last-sync">Conectando...</span>
+                <span id="sync-status" class="text-indigo-400 font-semibold hidden">Sincronización Activa 🟢</span>
+            </div>
         </div>
     </aside>
 
@@ -312,7 +314,7 @@
     </main>
 
     <!-- SISTEMA DE MODALES -->
-    <!-- NUEVO Modal Exportar Reporte HTML -->
+    <!-- Modal Exportar Reporte HTML -->
     <div id="modal-export" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-blue-50">
@@ -414,34 +416,47 @@
                         </div>
                         <div class="mt-2 text-right">
                             <span class="text-xs text-gray-500">Falta Pagar: </span>
-    <!-- CONTENEDOR DE IMPRESIÓN (Estructura A4 oculta para PDF limpio) -->
-    <div id="print-container"></div>
+                            <span id="gasto-falta-pagar" class="text-sm font-bold text-red-600">$0.00</span>
+                        </div>
+                    </div>
 
+                    <button type="submit" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl font-bold shadow-md transition-all">Guardar Registro</button>
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Principal con Firebase y Lógica Colaborativa -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // === FIREBASE SETUP ===
-        const appId = 'modashop-ceo-app'; // No lo cambies, es la carpeta de tu base de datos
-        let db, auth;
+        // === FIREBASE SETUP MULTIENTORNO ===
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'modashop-ceo-app';
+        let db, auth, currentUser = null;
 
-        // 👇 ¡ATENCIÓN! REEMPLAZA ESTO CON LOS DATOS DE TU FIREBASE REAL 👇
-        const firebaseConfig = {
-           apiKey: "AIzaSyDH5op00j6kGektsze1m_6O6mPY5AGxj-Y",
-  authDomain: "tablero-gastosweb.firebaseapp.com",
-  projectId: "tablero-gastosweb",
-  storageBucket: "tablero-gastosweb.firebasestorage.app",
-  messagingSenderId: "252729514203",
-  appId: "1:252729514203:web:d5d902b4781bfd41d594fe"
-};
-
-        try {
+        // Utilizamos la configuración dinámica de la plataforma para evitar errores aquí.
+        // Si descargas el HTML, puedes cambiar 'typeof __firebase_config !== "undefined"' por 'false' 
+        // y pegar tus credenciales reales en el bloque `else`.
+        if (typeof __firebase_config !== 'undefined') {
+            const app = initializeApp(JSON.parse(__firebase_config));
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } else {
+            // 👇 Reemplaza con tus credenciales si hospedas esto en tu propio servidor 👇
+            const firebaseConfig = {
+                apiKey: "TU_API_KEY",
+                authDomain: "TU_PROYECTO.firebaseapp.com",
+                projectId: "TU_PROYECTO",
+                storageBucket: "TU_PROYECTO.appspot.com",
+                messagingSenderId: "123456789",
+                appId: "1:123456789:web:abcdef"
+            };
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-        } catch (e) {
-            console.error("Error al conectar Firebase. Revisa el firebaseConfig.", e);
         }
 
         // === ESTADO GLOBAL ===
@@ -462,8 +477,9 @@
         let currentGlobalYear = '2026';
         let activeTab = 'carga';
         let globalCharts = {};
+        let isFirstSync = true;
         
-        // Exponer funciones
+        // Exponer funciones al scope global para que los botones HTML funcionen
         window.changeTab = changeTab;
         window.renderApp = renderApp;
         window.renderCarga = renderCarga;
@@ -511,62 +527,102 @@
             appState.meses.forEach(m => mCeo.add(new Option(m, m)));
             mCeo.value = mCarga.value;
 
+            // INICIALIZACIÓN DE FIREBASE Y SINCRONIZACIÓN EN TIEMPO REAL
             if (auth && db) {
                 try {
-                    showToast('Conectando a la nube del equipo...');
+                    document.getElementById('last-sync').innerText = 'Autenticando...';
                     
-                    // Conexión anónima universal para todo el equipo
-                    await signInAnonymously(auth);
-
-                    // Ruta donde se guardarán todos los gastos para que todas lo vean
-                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'main_state');
-                    const snap = await getDoc(docRef);
-                    
-                    if (snap.exists()) {
-                        const cloudData = snap.data();
-                        appState = { ...appState, ...cloudData };
-                        
-                        if(appState.puntosDeVenta.includes('Mauricio')) {
-                            appState.puntosDeVenta = appState.puntosDeVenta.map(p => p === 'Mauricio' ? 'Mauricio (CEO)' : p);
-                            appState.serviciosMaster.forEach(s => {
-                                if(s.prorrateos['Mauricio'] !== undefined) { s.prorrateos['Mauricio (CEO)'] = s.prorrateos['Mauricio']; delete s.prorrateos['Mauricio']; }
-                            });
-                            appState.gastos.forEach(g => {
-                                if(g.prorrateoAplicado && g.prorrateoAplicado['Mauricio'] !== undefined) {
-                                    g.prorrateoAplicado['Mauricio (CEO)'] = g.prorrateoAplicado['Mauricio']; delete g.prorrateoAplicado['Mauricio'];
-                                }
-                            });
-                        }
-                        document.getElementById('last-sync').innerText = 'Sincronizado al cargar';
+                    // Manejo de Auth (funciona tanto aquí adentro como afuera)
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
                     }
-                    showToast('Datos compartidos cargados.');
-                } catch (e) {
-                    console.error("Error Firebase:", e);
-                    showToast('Modo local (Sin Nube)');
-                }
-            }
+                    
+                    currentUser = auth.currentUser;
+                    if (!currentUser) throw new Error("No se pudo iniciar sesión.");
 
-            if(appState.gastos.length === 0) seedDataPrueba();
-            renderApp();
+                    // Referencia estricta solicitada: Colección 'boards', Documento 'main_board'
+                    // Utilizamos la ruta pública obligatoria para evitar bloqueos de permisos.
+                    const boardRef = doc(db, 'artifacts', appId, 'public', 'data', 'boards', 'main_board');
+
+                    // onSnapshot permite sincronización en TIEMPO REAL (Colaborativo)
+                    onSnapshot(boardRef, (snap) => {
+                        if (snap.exists()) {
+                            const cloudData = snap.data();
+                            appState = { ...appState, ...cloudData };
+                            
+                            // Corrección retroactiva para el nombre del CEO si es necesario
+                            if(appState.puntosDeVenta.includes('Mauricio')) {
+                                appState.puntosDeVenta = appState.puntosDeVenta.map(p => p === 'Mauricio' ? 'Mauricio (CEO)' : p);
+                                appState.serviciosMaster.forEach(s => {
+                                    if(s.prorrateos['Mauricio'] !== undefined) { s.prorrateos['Mauricio (CEO)'] = s.prorrateos['Mauricio']; delete s.prorrateos['Mauricio']; }
+                                });
+                                appState.gastos.forEach(g => {
+                                    if(g.prorrateoAplicado && g.prorrateoAplicado['Mauricio'] !== undefined) {
+                                        g.prorrateoAplicado['Mauricio (CEO)'] = g.prorrateoAplicado['Mauricio']; delete g.prorrateoAplicado['Mauricio'];
+                                    }
+                                });
+                            }
+                            
+                            if (!isFirstSync) {
+                                showToast('Tablero actualizado por otro miembro del equipo');
+                            }
+                            
+                            document.getElementById('sync-status').classList.remove('hidden');
+                            document.getElementById('last-sync').innerText = 'Online y Sincronizado';
+                            
+                            renderApp();
+                        } else {
+                            // Si el documento no existe en Firebase, lo inicializamos con datos de prueba
+                            if (appState.gastos.length === 0) seedDataPrueba();
+                            saveToCloudBtn(); // Forzamos la creación
+                        }
+                        isFirstSync = false;
+                    }, (error) => {
+                        console.error("Error en la sincronización en tiempo real:", error);
+                        document.getElementById('last-sync').innerText = 'Error de conexión';
+                        document.getElementById('sync-status').classList.add('hidden');
+                    });
+
+                } catch (e) {
+                    console.error("Error Firebase Auth/Sync:", e);
+                    showToast('Modo local (Sin conexión a la nube)');
+                    document.getElementById('last-sync').innerText = 'Modo Local (Offline)';
+                    if(appState.gastos.length === 0) seedDataPrueba();
+                    renderApp();
+                }
+            } else {
+                if(appState.gastos.length === 0) seedDataPrueba();
+                renderApp();
+            }
         };
 
+        // Función de Guardado Asíncrono conectada a Firestore (Colección boards)
         async function saveToCloudBtn() {
-            if(!auth || !db || !auth.currentUser) { 
-                showToast('Faltan tus credenciales de Firebase en el código.'); 
+            if(!auth || !db || !currentUser) { 
+                showToast('No estás conectado a Firebase.'); 
                 return; 
             }
             try {
-                showToast('Sincronizando para el equipo...');
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'main_state');
-                await setDoc(docRef, appState);
+                showToast('Guardando en la Nube...');
+                const boardRef = doc(db, 'artifacts', appId, 'public', 'data', 'boards', 'main_board');
+                
+                // setDoc con merge: true crea el documento si no existe, o lo actualiza si ya existe
+                await setDoc(boardRef, appState, { merge: true });
+                
                 const now = new Date();
-                document.getElementById('last-sync').innerText = `Sincronizado: ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
-                showToast('¡Guardado en la Nube exitoso!');
+                document.getElementById('last-sync').innerText = `Últ. guardado: ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
+                showToast('¡Datos guardados con éxito!');
             } catch(e) { 
-                console.error("Error al guardar en la nube:", e);
-                showToast('Error al guardar. Revisa Firestore Rules.'); 
+                console.error("Error crítico al guardar en Firestore:", e);
+                showToast('Error al guardar. Verifica la consola.'); 
             }
         }
+
+        // ==========================================
+        // LÓGICA DE NAVEGACIÓN Y RENDERIZADO
+        // ==========================================
 
         function changeTab(tab) {
             activeTab = tab;
