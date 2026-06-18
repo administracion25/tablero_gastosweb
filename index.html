@@ -419,17 +419,16 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // === FIREBASE SETUP ===
-        const appId = 'modashop-ceo-app'; // Identificador único de tu app
+        const appId = 'modashop-ceo-app'; // No lo cambies, es la carpeta de tu base de datos
         let db, auth;
 
-        // 👇 1. PEGA AQUÍ LA CONFIGURACIÓN DE TU FIREBASE 👇
-        // Reemplaza estos valores con los que te da la consola de Firebase al crear tu App Web
+        // 👇 ¡ATENCIÓN! REEMPLAZA ESTO CON LOS DATOS DE TU FIREBASE REAL 👇
         const firebaseConfig = {
-            apiKey: "AIzaSyDH5op00j6kGektsze1m_6O6mPY5AGxj-Y",
+           apiKey: "AIzaSyDH5op00j6kGektsze1m_6O6mPY5AGxj-Y",
   authDomain: "tablero-gastosweb.firebaseapp.com",
   projectId: "tablero-gastosweb",
   storageBucket: "tablero-gastosweb.firebasestorage.app",
@@ -441,8 +440,8 @@
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-        } catch (error) {
-            console.error("Error configurando Firebase: asegúrate de haber puesto tus credenciales reales.", error);
+        } catch (e) {
+            console.error("Error al conectar Firebase. Revisa el firebaseConfig.", e);
         }
 
         // === ESTADO GLOBAL ===
@@ -514,13 +513,15 @@
 
             if (auth && db) {
                 try {
-                    showToast('Conectando a la nube...');
+                    showToast('Conectando a la nube del equipo...');
                     
-                    // 2. Inicio de sesión anónimo estándar de Firebase
+                    // Conexión anónima universal para todo el equipo
                     await signInAnonymously(auth);
 
+                    // Ruta donde se guardarán todos los gastos para que todas lo vean
                     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'main_state');
                     const snap = await getDoc(docRef);
+                    
                     if (snap.exists()) {
                         const cloudData = snap.data();
                         appState = { ...appState, ...cloudData };
@@ -538,7 +539,7 @@
                         }
                         document.getElementById('last-sync').innerText = 'Sincronizado al cargar';
                     }
-                    showToast('Datos cargados de la nube.');
+                    showToast('Datos compartidos cargados.');
                 } catch (e) {
                     console.error("Error Firebase:", e);
                     showToast('Modo local (Sin Nube)');
@@ -550,15 +551,21 @@
         };
 
         async function saveToCloudBtn() {
-            if(!auth || !db || !auth.currentUser) { showToast('Nube no configurada.'); return; }
+            if(!auth || !db || !auth.currentUser) { 
+                showToast('Faltan tus credenciales de Firebase en el código.'); 
+                return; 
+            }
             try {
-                showToast('Guardando en la Nube...');
+                showToast('Sincronizando para el equipo...');
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'main_state');
                 await setDoc(docRef, appState);
                 const now = new Date();
-                document.getElementById('last-sync').innerText = `Últ. guardado: ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
-                showToast('¡Guardado exitoso!');
-            } catch(e) { showToast('Error al guardar.'); }
+                document.getElementById('last-sync').innerText = `Sincronizado: ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
+                showToast('¡Guardado en la Nube exitoso!');
+            } catch(e) { 
+                console.error("Error al guardar en la nube:", e);
+                showToast('Error al guardar. Revisa Firestore Rules.'); 
+            }
         }
 
         function changeTab(tab) {
