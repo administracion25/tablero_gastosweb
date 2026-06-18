@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablero Gerencial de Gastos</title>
+    
+    <!-- Librerías -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { overflow-x: hidden; background-color: #f3f4f6; }
+        .tab-btn.active { background-color: #4f46e5; color: white; border-left: 4px solid #818cf8; }
+        .tab-btn:not(.active):hover { background-color: #1f2937; color: white; }
+        .modal-active { display: flex !important; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="font-sans text-gray-800 h-screen flex flex-col md:flex-row overflow-hidden relative" id="body-wrapper">
+
+    <!-- Notificación Flotante -->
+    <div id="toast" class="fixed top-4 right-4 bg-gray-900 text-white px-6 py-3 rounded-lg shadow-lg transform transition-transform duration-300 translate-x-full z-[100] flex items-center gap-3">
+        <i data-lucide="info" class="w-5 h-5 text-indigo-400"></i>
+        <span id="toast-msg" class="text-sm font-medium">Notificación</span>
+    </div>
+
+    <!-- Menú Lateral -->
+    <aside id="main-aside" class="w-full md:w-64 bg-gray-900 text-gray-300 flex-shrink-0 flex flex-col h-full overflow-y-auto z-10 shadow-xl">
+        <div class="p-6 border-b border-gray-800">
+            <h1 class="text-xl font-bold text-white tracking-wide">MODASHOP<span class="text-indigo-400">.GASTOS</span></h1>
+            <p class="text-xs text-gray-500 mt-1">Control Financiero Global</p>
+        </div>
+        <nav class="flex-1 p-4 flex flex-col gap-2" id="nav-menu">
+            <button onclick="changeTab('carga')" id="btn-carga" class="tab-btn active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-left">
+                <i data-lucide="calendar-clock" class="w-5 h-5"></i> Carga Mensual
+            </button>
+            <button onclick="changeTab('dashboard')" id="btn-dashboard" class="tab-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-left">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Tablero General
+            </button>
+            <button onclick="changeTab('comparativo')" id="btn-comparativo" class="tab-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-left">
+                <i data-lucide="bar-chart-2" class="w-5 h-5"></i> Detalle y Comparativo
+            </button>
+            <button onclick="changeTab('ceo')" id="btn-ceo" class="tab-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-left">
+                <i data-lucide="briefcase" class="w-5 h-5"></i> Área CEO / Reporte
+            </button>
+            
+            <div class="mt-6 mb-2 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Mantenimiento</div>
+            <button onclick="changeTab('config')" id="btn-config" class="tab-btn flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-left">
+                <i data-lucide="settings" class="w-5 h-5"></i> Prorrateo y PDVs
+            </button>
+        </nav>
+        <div class="p-4 border-t border-gray-800 space-y-2">
+            <!-- BOTÓN ACTUALIZADO PARA NUEVO SISTEMA -->
+            <button onclick="openModalExportReport()" class="w-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-bold shadow-lg transition-all">
+                <i data-lucide="monitor-smartphone" class="w-4 h-4"></i> Exportar Reporte CEO
+            </button>
+            <button onclick="saveToCloudBtn()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all">
+                <i data-lucide="cloud-upload" class="w-4 h-4"></i> Guardar en Nube
+            </button>
+            <p class="text-[10px] text-gray-500 text-center mt-1" id="last-sync">No sincronizado</p>
+        </div>
+    </aside>
+
+    <!-- Contenido Principal -->
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto h-full relative" id="main-content-area">
+        <div class="max-w-7xl mx-auto">
+            
+            <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 id="page-title" class="text-2xl md:text-3xl font-bold text-gray-900">Carga Mensual Operativa</h1>
+                    <p id="page-desc" class="text-gray-500 text-sm mt-1">Registro cronológico y gestión de pagos divididos.</p>
+                </div>
+                <!-- Filtros Globales rápidos -->
+                <div class="flex items-center gap-2 bg-white p-2 rounded-lg shadow-sm border border-gray-200">
+                    <i data-lucide="calendar" class="w-4 h-4 text-gray-400 ml-2"></i>
+                    <select id="global-year" onchange="renderApp()" class="bg-transparent border-none text-sm font-medium text-gray-700 outline-none cursor-pointer">
+                        <!-- Llenado JS -->
+                    </select>
+                </div>
+            </header>
+
+            <!-- VISTA: CARGA MENSUAL -->
+            <div id="view-carga" class="space-y-6">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-4 items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <select id="carga-month" onchange="renderCarga()" class="border-gray-300 rounded-lg shadow-sm bg-gray-50 p-2 border text-sm font-bold text-indigo-700 outline-none">
+                            <!-- Llenado JS -->
+                        </select>
+                        <span class="text-sm text-gray-500 hidden md:inline">Ordenado por fecha de vencimiento</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="generarFijosDelMes()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold border border-gray-300 transition-colors" title="Trae todos los servicios fijos del maestro para este mes.">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Generar Fijos del Mes
+                        </button>
+                        <button onclick="openModalGasto('Variable')" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold shadow-md transition-colors">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Gasto Vario
+                        </button>
+                        <button onclick="openModalGasto('Fijo')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold shadow-md transition-colors">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Gasto Fijo
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+                    <table class="w-full text-left text-sm text-gray-600">
+                        <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b" id="thead-carga">
+                            <tr>
+                                <th class="px-4 py-4">Tipo</th>
+                                <th class="px-4 py-4">Concepto / Servicio</th>
+                                <th class="px-4 py-4">Vencimiento</th>
+                                <th class="px-4 py-4">Importe Total</th>
+                                <th class="px-4 py-4">Estado</th>
+                                <th class="px-4 py-4">Pagos Registrados</th>
+                                <th class="px-4 py-4 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-carga" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- VISTA: DASHBOARD -->
+            <div id="view-dashboard" class="hidden space-y-6">
+                <!-- Filtros Específicos del Dashboard -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-4 items-center">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="filter" class="w-4 h-4 text-indigo-600"></i>
+                        <span class="text-sm font-bold text-gray-700">Filtros de Análisis:</span>
+                    </div>
+                    <select id="dash-month" onchange="renderDashboard()" class="bg-gray-50 border border-gray-300 text-sm font-semibold text-gray-700 rounded-lg p-2 outline-none">
+                        <option value="Todos">Todos los Meses</option>
+                    </select>
+                    <select id="dash-pos" onchange="renderDashboard()" class="bg-gray-50 border border-gray-300 text-sm font-semibold text-gray-700 rounded-lg p-2 outline-none">
+                        <option value="Todos">Todos los Puntos de Venta</option>
+                        <!-- Se llena dinámicamente -->
+                    </select>
+                </div>
+
+                <!-- KPIs Globales -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                        <span class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Total Gastos (Año)</span>
+                        <span id="kpi-dash-total" class="text-2xl font-black text-gray-900 mt-2">$0</span>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                        <span class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Pagado</span>
+                        <span id="kpi-dash-pagado" class="text-2xl font-black text-green-600 mt-2">$0</span>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                        <span class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Pendiente / Deuda</span>
+                        <span id="kpi-dash-pendiente" class="text-2xl font-black text-red-500 mt-2">$0</span>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                        <span class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Gasto Prom. Mensual</span>
+                        <span id="kpi-dash-promedio" class="text-2xl font-black text-indigo-600 mt-2">$0</span>
+                    </div>
+                </div>
+
+                <!-- Gráficos Dash -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-2">
+                        <h3 class="text-md font-bold text-gray-800 mb-4">Evolución Anual por Punto de Venta</h3>
+                        <div class="relative h-72 w-full"><canvas id="chartEvolucion"></canvas></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <h3 class="text-md font-bold text-gray-800 mb-4 text-center">Distribución Global (Peso)</h3>
+                        <div class="relative h-72 w-full"><canvas id="chartPDV"></canvas></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:col-span-3 overflow-x-auto">
+                        <h3 class="text-md font-bold text-gray-800 mb-4">Detalle de Gastos</h3>
+                        <table class="w-full text-left text-sm text-gray-600">
+                            <thead class="text-xs text-gray-500 uppercase bg-gray-50 border-b border-t" id="thead-matriz-dash">
+                                <!-- Llenado JS -->
+                            </thead>
+                            <tbody id="tbody-matriz-dash" class="divide-y divide-gray-100">
+                                <!-- Llenado JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VISTA: COMPARATIVO Y DETALLE OPERATIVO -->
+            <div id="view-comparativo" class="hidden space-y-6">
+                <div class="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex flex-col md:flex-row gap-6 items-start">
+                    <div class="flex-1">
+                        <h2 class="text-lg font-bold text-indigo-900 mb-2">Análisis Comparativo y Diagnóstico</h2>
+                        <p class="text-sm text-indigo-700 mb-4">Selecciona los meses que deseas comparar para generar el detalle operativo y el diagnóstico de variación de gastos.</p>
+                        
+                        <div class="flex flex-wrap gap-2 mb-2" id="comp-meses-container">
+                            <!-- Checkboxes de meses JS -->
+                        </div>
+                    </div>
+                    <div class="w-full md:w-1/3 bg-white p-4 rounded-xl shadow-sm border border-indigo-100">
+                        <h4 class="text-xs font-bold text-gray-500 uppercase mb-2">Diagnóstico de IA Automático</h4>
+                        <p id="diagnostico-text" class="text-sm text-gray-700 leading-relaxed italic">Selecciona al menos un mes para ver el diagnóstico operativo.</p>
+                    </div>
+                </div>
+
+                <!-- Detalle Operativo Tables -->
+                <div id="comp-tables-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- JS rellena aquí tablas por mes seleccionado -->
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 class="text-md font-bold text-gray-800 mb-4 text-center">Comparativa Gráfica por Punto de Venta</h3>
+                    <div class="relative h-96 w-full"><canvas id="chartComparativo"></canvas></div>
+                </div>
+            </div>
+
+            <!-- VISTA: AREA CEO -->
+            <div id="view-ceo" class="hidden space-y-6">
+                <div class="bg-gray-900 p-8 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-center text-white gap-6">
+                    <div>
+                        <h2 class="text-2xl font-black flex items-center gap-3"><i data-lucide="award" class="text-yellow-400"></i> Área de Reporte CEO</h2>
+                        <p class="text-gray-400 mt-2 text-sm max-w-lg">Control presupuestario de gastos directos del CEO y total a liquidar.</p>
+                    </div>
+                    <div class="flex flex-col gap-3 w-full md:w-auto">
+                        <div class="flex items-center gap-2 bg-gray-800 p-2 rounded-lg">
+                            <span class="text-sm text-gray-400 pl-2">Reporte del Mes:</span>
+                            <select id="ceo-report-month" onchange="renderCeo()" class="bg-gray-700 text-white border-none rounded p-2 text-sm font-bold outline-none cursor-pointer">
+                                <!-- Meses JS -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-1 space-y-6">
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                            <h3 class="text-md font-bold text-gray-800 mb-4 border-b pb-2">Presupuesto/Compromiso CEO</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-500 uppercase">Compromiso Asignado (USD)</label>
+                                    <input type="number" id="ceo-presupuesto-usd" class="w-full mt-1 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg p-2.5 font-bold" value="5000">
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold text-gray-500 uppercase">Cotización del Dólar ($)</label>
+                                    <div class="flex mt-1 gap-2">
+                                        <input type="number" id="ceo-cotizacion" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg p-2.5 font-bold" placeholder="Ej: 1200">
+                                        <button onclick="guardarPresupuestoCEO()" class="bg-gray-800 text-white px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"><i data-lucide="save" class="w-4 h-4"></i></button>
+                                    </div>
+                                </div>
+                                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 mt-4">
+                                    <div class="text-sm text-blue-800 flex justify-between mb-1"><span>Compromiso (en ARS):</span> <span id="lbl-ceo-comp-ars" class="font-bold">$0</span></div>
+                                    <div class="text-sm text-indigo-800 flex justify-between mb-1"><span>Gastos Reales (ARS):</span> <span id="lbl-ceo-gasto" class="font-bold">+ $0</span></div>
+                                    <div class="border-t border-blue-200 my-2"></div>
+                                    <div class="text-md text-gray-900 flex justify-between font-black"><span>Total a Liquidar:</span> <span id="lbl-ceo-total" class="text-green-700">$0</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-md font-bold text-gray-800">Historial de Gastos Reales CEO</h3>
+                            <button onclick="openModalGasto('CEO')" class="text-sm text-indigo-600 font-bold hover:underline flex items-center gap-1"><i data-lucide="plus-circle" class="w-4 h-4"></i> Añadir Gasto</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm text-gray-600">
+                                <thead class="text-xs text-gray-500 uppercase bg-gray-50" id="thead-ceo">
+                                    <tr><th class="px-4 py-3">Fecha</th><th class="px-4 py-3">Concepto</th><th class="px-4 py-3">Importe</th><th class="px-4 py-3 text-right">Acciones</th></tr>
+                                </thead>
+                                <tbody id="tbody-ceo" class="divide-y divide-gray-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VISTA: CONFIGURACIÓN MAESTRO (PRORRATEO Y PDV) -->
+            <div id="view-config" class="hidden space-y-6">
+                <!-- Gestión de PDVs -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold text-gray-800 mb-1">Puntos de Venta (PDV) Activos</h2>
+                    <p class="text-sm text-gray-500 mb-4">Agrega o elimina puntos de venta. Los cambios aplicarán a nuevos prorrateos.</p>
+                    <div class="flex flex-wrap gap-2 items-center" id="pdv-badges-container">
+                        <!-- Badges JS -->
+                    </div>
+                    <form onsubmit="addPDV(event)" class="mt-4 flex gap-2 max-w-sm">
+                        <input type="text" id="new-pdv-name" placeholder="Nuevo PDV..." required class="flex-1 border-gray-300 rounded-lg shadow-sm bg-gray-50 p-2 text-sm border outline-none">
+                        <button type="submit" class="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">Añadir</button>
+                    </form>
+                </div>
+
+                <!-- Maestro de Servicios Fijos -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-lg font-bold text-gray-800">Catálogo Base de Prorrateo (Servicios)</h2>
+                            <p class="text-sm text-gray-500 mt-1">Configura el % que pagará cada PDV. <span class="font-bold text-indigo-600">Importante:</span> Modificar esto aquí SOLO afectará a los gastos que generes de aquí en adelante (histórico se congela).</p>
+                        </div>
+                        <button onclick="openModalServicio()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-colors">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Nuevo Servicio Fijo
+                        </button>
+                    </div>
+                    <table class="w-full text-left text-sm text-gray-600">
+                        <thead class="text-[10px] text-gray-500 uppercase bg-gray-50 border-b" id="thead-maestro"></thead>
+                        <tbody id="tbody-maestro" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- SISTEMA DE MODALES -->
+    <!-- NUEVO Modal Exportar Reporte HTML -->
+    <div id="modal-export" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-blue-50">
+                <h3 class="text-lg font-black text-blue-900 flex items-center gap-2"><i data-lucide="layout-template"></i> Exportar Reporte Ejecutivo</h3>
+                <button onclick="closeModalExport()" class="text-gray-400 hover:text-red-500 transition-colors"><i data-lucide="x"></i></button>
+            </div>
+            <div class="p-6">
+                <p class="text-sm text-gray-600 mb-4">Selecciona las secciones para generar un <strong>documento web interactivo</strong> que el CEO podrá ver perfectamente desde cualquier dispositivo (y guardar a PDF de forma nativa si lo desea):</p>
+                <div class="space-y-3 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="chk-pdf-dash" class="accent-blue-600 w-4 h-4" checked> <span class="text-sm font-bold text-gray-800">Resumen y Tablero General</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="chk-pdf-ceo" class="accent-blue-600 w-4 h-4" checked> <span class="text-sm font-bold text-gray-800">Área CEO / Liquidación</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="chk-pdf-comp" class="accent-blue-600 w-4 h-4" checked> <span class="text-sm font-bold text-gray-800">Diagnóstico y Comparativo</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="chk-pdf-carga" class="accent-blue-600 w-4 h-4"> <span class="text-sm font-bold text-gray-800">Detalle Completo (Carga Mensual)</span></label>
+                </div>
+                <button onclick="generarReporteHTML()" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2">
+                    <i data-lucide="download"></i> Descargar Documento Interactivo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Formulario Gasto / Servicio -->
+    <div id="modal-container" class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden transform scale-100 transition-transform">
+            
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <h3 id="modal-title" class="text-xl font-black text-gray-800">Título</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-red-500 bg-white rounded-full p-1 shadow-sm transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1 custom-scrollbar">
+                
+                <!-- Form Servicio Maestro -->
+                <form id="form-servicio" class="hidden flex-col gap-5" onsubmit="saveServicio(event)">
+                    <input type="hidden" id="srv-id">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Nombre del Servicio a Prorratear</label>
+                        <input type="text" id="srv-nombre" required class="w-full border-gray-300 rounded-lg bg-gray-50 p-3 text-sm border focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    
+                    <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                        <label class="block text-xs font-bold text-indigo-900 uppercase tracking-wide mb-3 flex items-center gap-2"><i data-lucide="pie-chart" class="w-4 h-4"></i> Distribución de Carga (%)</label>
+                        <div id="srv-prorrateo-inputs" class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <!-- Generado dinámicamente según PDVs activos -->
+                        </div>
+                        <div class="mt-4 flex justify-between items-center text-sm font-bold">
+                            <span class="text-indigo-800">Total Distribuido:</span>
+                            <span id="srv-total-pct" class="text-indigo-900">0%</span>
+                        </div>
+                    </div>
+                    <button type="submit" class="mt-2 w-full bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl font-bold shadow-md transition-all">Guardar Regla de Servicio</button>
+                </form>
+
+                <!-- Form Gasto (Fijo, Variable, CEO unificado) -->
+                <form id="form-gasto" class="hidden flex-col gap-5" onsubmit="saveGasto(event)">
+                    <input type="hidden" id="gasto-id">
+                    <input type="hidden" id="gasto-tipo">
+                    
+                    <!-- Fila 1: Origen del Gasto -->
+                    <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div id="wrapper-concepto">
+                            <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Concepto / Descripción</label>
+                            <input type="text" id="gasto-concepto" class="w-full border-gray-300 rounded-lg p-2.5 text-sm border focus:ring-2 focus:ring-indigo-500 outline-none">
+                        </div>
+                        <div id="wrapper-servicio" class="hidden">
+                            <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Servicio Fijo (Maestro)</label>
+                            <select id="gasto-servicio" class="w-full border-gray-300 rounded-lg p-2.5 text-sm border focus:ring-2 focus:ring-indigo-500 outline-none bg-white"></select>
+                            <p class="text-[10px] text-gray-500 mt-1 italic">*Al guardar, se congela la foto del prorrateo actual.</p>
+                        </div>
+                        <div id="wrapper-pdv" class="hidden">
+                            <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Asignar a PDV</label>
+                            <select id="gasto-pdv" class="w-full border-gray-300 rounded-lg p-2.5 text-sm border focus:ring-2 focus:ring-indigo-500 outline-none bg-white"></select>
+                        </div>
+                    </div>
+
+                    <!-- Fila 2: Tiempos y Montos -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Importe Total Factura ($)</label>
+                             <input type="number" step="0.01" id="gasto-importe" required class="w-full border-gray-300 rounded-lg p-2.5 text-lg font-black text-indigo-700 border focus:ring-2 focus:ring-indigo-500 outline-none">
+                        </div>
+                        <div><label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Mes de Impacto</label>
+                             <select id="gasto-mes-impacto" class="w-full border-gray-300 rounded-lg p-2.5 text-sm border bg-gray-50 cursor-not-allowed" disabled></select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Fecha de Vencimiento</label><input type="date" id="gasto-vto" required class="w-full border-gray-300 rounded-lg p-2.5 text-sm border"></div>
+                        <div><label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Fecha Real de Pago</label><input type="date" id="gasto-pago-fecha" class="w-full border-gray-300 rounded-lg p-2.5 text-sm border text-gray-500"></div>
+                    </div>
+
+                    <!-- Fila 3: Medios de Pago (Split) -->
+                    <div class="border-t border-gray-200 pt-4 mt-2">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-xs font-bold text-gray-800 uppercase tracking-wide">Registro de Pagos (Divisiones)</label>
+                            <button type="button" onclick="addPagoRow()" class="text-[10px] bg-green-100 text-green-800 font-bold px-2 py-1 rounded hover:bg-green-200">+ Agregar Método</button>
+                        </div>
+                        <div id="pagos-container" class="space-y-2">
+                            <!-- Filas dinámicas JS -->
+                        </div>
+                        <div class="mt-2 text-right">
+                            <span class="text-xs text-gray-500">Falta Pagar: </span>
+    <!-- CONTENEDOR DE IMPRESIÓN (Estructura A4 oculta para PDF limpio) -->
+    <div id="print-container"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // === FIREBASE SETUP ===
+        const appId = 'modashop-ceo-app'; // Identificador único de tu app
+        let db, auth;
+
+        // 👇 1. PEGA AQUÍ LA CONFIGURACIÓN DE TU FIREBASE 👇
+        // Reemplaza estos valores con los que te da la consola de Firebase al crear tu App Web
+        const firebaseConfig = {
+            apiKey: "AIzaSyDH5op00j6kGektsze1m_6O6mPY5AGxj-Y",
+  authDomain: "tablero-gastosweb.firebaseapp.com",
+  projectId: "tablero-gastosweb",
+  storageBucket: "tablero-gastosweb.firebasestorage.app",
+  messagingSenderId: "252729514203",
+  appId: "1:252729514203:web:d5d902b4781bfd41d594fe"
+};
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (error) {
+            console.error("Error configurando Firebase: asegúrate de haber puesto tus credenciales reales.", error);
+        }
+
+        // === ESTADO GLOBAL ===
+        window.appState = {
+            puntosDeVenta: ['Depósito', 'Concordia', 'Chajari', 'Tendens', 'Mauricio (CEO)'],
+            metodosPago: ['Mercado Pago Modashop', 'Mercado Pago Tendens', 'Banco Macro', 'Banco BBVA', 'Banco Entre Ríos', 'Caja Efectivo'],
+            meses: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+            anos: Array.from({length: 11}, (_, i) => (2026 + i).toString()),
+            serviciosMaster: [
+                { id: 1, nombre: 'Alquiler Deposito', prorrateos: { 'Depósito': 100 } },
+                { id: 2, nombre: 'Coop. Electrica Modashop', prorrateos: { 'Concordia': 50, 'Chajari': 50 } },
+                { id: 3, nombre: 'Internet Plus Modashop', prorrateos: { 'Depósito': 20, 'Concordia': 40, 'Tendens': 40 } }
+            ],
+            gastos: [], 
+            presupuestosCEO: {} 
+        };
+
+        let currentGlobalYear = '2026';
+        let activeTab = 'carga';
+        let globalCharts = {};
+        
+        // Exponer funciones
+        window.changeTab = changeTab;
+        window.renderApp = renderApp;
+        window.renderCarga = renderCarga;
+        window.renderDashboard = renderDashboard;
+        window.renderCeo = renderCeo;
+        window.openModalServicio = openModalServicio;
+        window.openModalGasto = openModalGasto;
+        window.closeModal = closeModal;
+        window.saveServicio = saveServicio;
+        window.saveGasto = saveGasto;
+        window.addPDV = addPDV;
+        window.removePDV = removePDV;
+        window.addPagoRow = addPagoRow;
+        window.calcFaltaPagar = calcFaltaPagar;
+        window.removePagoRow = removePagoRow;
+        window.generarFijosDelMes = generarFijosDelMes;
+        window.deleteGasto = deleteGasto;
+        window.guardarPresupuestoCEO = guardarPresupuestoCEO;
+        window.updateComparativo = updateComparativo;
+        window.saveToCloudBtn = saveToCloudBtn;
+        window.openModalExportReport = () => { document.getElementById('modal-export').classList.add('modal-active'); lucide.createIcons(); };
+        window.closeModalExport = () => document.getElementById('modal-export').classList.remove('modal-active');
+        window.generarReporteHTML = generarReporteHTML;
+
+        window.fmt = (val) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(val || 0);
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            t.classList.remove('translate-x-full');
+            setTimeout(() => t.classList.add('translate-x-full'), 3000);
+        }
+
+        window.onload = async () => {
+            lucide.createIcons();
+            
+            const gYear = document.getElementById('global-year');
+            appState.anos.forEach(a => gYear.add(new Option(a, a)));
+            
+            const mCarga = document.getElementById('carga-month');
+            appState.meses.forEach(m => mCarga.add(new Option(m, m)));
+            mCarga.value = appState.meses[new Date().getMonth()]; 
+
+            const mCeo = document.getElementById('ceo-report-month');
+            appState.meses.forEach(m => mCeo.add(new Option(m, m)));
+            mCeo.value = mCarga.value;
+
+            if (auth && db) {
+                try {
+                    showToast('Conectando a la nube...');
+                    
+                    // 2. Inicio de sesión anónimo estándar de Firebase
+                    await signInAnonymously(auth);
+
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'main_state');
+                    const snap = await getDoc(docRef);
+                    if (snap.exists()) {
+                        const cloudData = snap.data();
+                        appState = { ...appState, ...cloudData };
+                        
+                        if(appState.puntosDeVenta.includes('Mauricio')) {
+                            appState.puntosDeVenta = appState.puntosDeVenta.map(p => p === 'Mauricio' ? 'Mauricio (CEO)' : p);
+                            appState.serviciosMaster.forEach(s => {
+                                if(s.prorrateos['Mauricio'] !== undefined) { s.prorrateos['Mauricio (CEO)'] = s.prorrateos['Mauricio']; delete s.prorrateos['Mauricio']; }
+                            });
+                            appState.gastos.forEach(g => {
+                                if(g.prorrateoAplicado && g.prorrateoAplicado['Mauricio'] !== undefined) {
+                                    g.prorrateoAplicado['Mauricio (CEO)'] = g.prorrateoAplicado['Mauricio']; delete g.prorrateoAplicado['Mauricio'];
+                                }
+                            });
+                        }
+                        document.getElementById('last-sync').innerText = 'Sincronizado al cargar';
+                    }
+                    showToast('Datos cargados de la nube.');
+                } catch (e) {
+                    console.error("Error Firebase:", e);
+                    showToast('Modo local (Sin Nube)');
+                }
+            }
+
+            if(appState.gastos.length === 0) seedDataPrueba();
+            renderApp();
+        };
+
+        async function saveToCloudBtn() {
+            if(!auth || !db || !auth.currentUser) { showToast('Nube no configurada.'); return; }
+            try {
+                showToast('Guardando en la Nube...');
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'main_state');
+                await setDoc(docRef, appState);
+                const now = new Date();
+                document.getElementById('last-sync').innerText = `Últ. guardado: ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
+                showToast('¡Guardado exitoso!');
+            } catch(e) { showToast('Error al guardar.'); }
+        }
+
+        function changeTab(tab) {
+            activeTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${tab}`).classList.add('active');
+
+            const vistas = ['carga', 'dashboard', 'comparativo', 'ceo', 'config'];
+            vistas.forEach(t => document.getElementById(`view-${t}`).style.display = t === tab ? 'block' : 'none');
+
+            const titulos = {
+                'carga': ['Carga Mensual Operativa', 'Registro cronológico y gestión de pagos divididos.'],
+                'dashboard': ['Tablero General', 'Visión consolidada del año.'],
+                'comparativo': ['Detalle y Comparativo', 'Análisis detallado cruzando múltiples meses.'],
+                'ceo': ['Área CEO / Liquidación', 'Control de Compromisos y Total a Pagar.'],
+                'config': ['Mantenimiento del Sistema', 'Configura los PDVs y las reglas maestras de prorrateo.']
+            };
+            document.getElementById('page-title').innerText = titulos[tab][0];
+            document.getElementById('page-desc').innerText = titulos[tab][1];
+
+            renderApp();
+        }
+
+        function renderApp() {
+            currentGlobalYear = document.getElementById('global-year').value;
+            if (activeTab === 'carga') renderCarga();
+            if (activeTab === 'dashboard') renderDashboard();
+            if (activeTab === 'comparativo') renderComparativoInit();
+            if (activeTab === 'ceo') renderCeo();
+            if (activeTab === 'config') renderConfig();
+        }
+
+        function getFactTable(yearFilter = null, monthFilter = null) {
+            let facts = [];
+            appState.gastos.forEach(g => {
+                if (yearFilter && g.ano !== yearFilter) return;
+                if (monthFilter && g.mesStr !== monthFilter) return;
+
+                const pr = g.prorrateoAplicado || {}; 
+                Object.keys(pr).forEach(pdv => {
+                    const pct = pr[pdv] || 0;
+                    if (pct > 0) {
+                        facts.push({
+                            id: g.id, ano: g.ano, mes: g.mesStr, tipo: g.tipo,
+                            concepto: g.concepto || (appState.serviciosMaster.find(s=>s.id == g.servicioId)?.nombre || 'Servicio Desc.'),
+                            pdv: pdv, importeParcial: (g.importeTotal * pct) / 100,
+                            estado: g.estado, vto: g.fechaVto
+                        });
+                    }
+                });
+            });
+            return facts;
+        }
+
+        function renderCarga() {
+            const mSel = document.getElementById('carga-month').value;
+            let list = appState.gastos.filter(g => g.ano === currentGlobalYear && g.mesStr === mSel && g.tipo !== 'CEO');
+            list.sort((a, b) => new Date(a.fechaVto) - new Date(b.fechaVto));
+
+            document.getElementById('tbody-carga').innerHTML = list.map(g => {
+                let badgeColor = g.estado === 'Pagado' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800 border border-red-200';
+                let tipoBadge = g.tipo === 'Fijo' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800';
+                let nom = g.concepto;
+                if (g.tipo === 'Fijo') nom = appState.serviciosMaster.find(s=>s.id == g.servicioId)?.nombre || 'Srv. Borrado';
+
+                let pagosStr = '<span class="text-xs text-gray-400 italic">Sin pagos</span>';
+                if (g.pagos && g.pagos.length > 0) {
+                    pagosStr = g.pagos.map(p => `<div class="text-[10px]"><span class="font-bold">${p.metodo}:</span> ${fmt(p.monto)}</div>`).join('');
+                }
+
+                let vtoStr = g.fechaVto ? new Date(g.fechaVto).toLocaleDateString('es-AR', {day:'2-digit', month:'short'}) : '-';
+                let isLate = (g.estado !== 'Pagado' && new Date(g.fechaVto) < new Date());
+                let vtoClass = isLate ? 'text-red-600 font-bold bg-red-50 p-1 rounded' : 'text-gray-700';
+
+                return `<tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-4 py-3"><span class="px-2 py-1 rounded text-[10px] font-bold ${tipoBadge}">${g.tipo}</span></td>
+                    <td class="px-4 py-3 font-medium text-gray-900">${nom}</td>
+                    <td class="px-4 py-3 text-sm"><span class="${vtoClass}">${vtoStr}</span></td>
+                    <td class="px-4 py-3 font-black text-gray-900">${fmt(g.importeTotal)}</td>
+                    <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-bold ${badgeColor}">${g.estado}</span></td>
+                    <td class="px-4 py-3">${pagosStr}</td>
+                    <td class="px-4 py-3 text-right">
+                        <button onclick="editGasto(${g.id})" class="text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-2 py-1 rounded text-xs font-bold mr-1">Editar</button>
+                        <button onclick="deleteGasto(${g.id})" class="text-red-600 hover:text-red-900 text-xs font-bold"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </td>
+                </tr>`;
+            }).join('') || `<tr><td colspan="7" class="text-center py-8 text-gray-500 italic">No hay gastos registrados. Usa "Generar Fijos" o carga uno.</td></tr>`;
+            lucide.createIcons();
+        }
+
+        function generarFijosDelMes() {
+            const mSel = document.getElementById('carga-month').value;
+            let addedCount = 0;
+            const mesIdx = appState.meses.indexOf(mSel);
+            let defaultVto = `${currentGlobalYear}-${String(mesIdx+1).padStart(2,'0')}-10`;
+
+            appState.serviciosMaster.forEach(srv => {
+                const exists = appState.gastos.some(g => g.tipo === 'Fijo' && g.servicioId === srv.id && g.mesStr === mSel && g.ano === currentGlobalYear);
+                if (!exists) {
+                    appState.gastos.push({
+                        id: Date.now() + Math.random(), tipo: 'Fijo', servicioId: srv.id,
+                        ano: currentGlobalYear, mesStr: mSel, fechaVto: defaultVto,
+                        importeTotal: 0, estado: 'Pendiente', pagos: [],
+                        prorrateoAplicado: JSON.parse(JSON.stringify(srv.prorrateos))
+                    });
+                    addedCount++;
+                }
+            });
+            if(addedCount > 0) showToast(`${addedCount} servicios importados del Maestro.`);
+            else showToast('Ya estaban generados.');
+            renderCarga();
+        }
+
+        function renderDashboard() {
+            const monthSel = document.getElementById('dash-month');
+            if (monthSel.options.length === 1) appState.meses.forEach(m => monthSel.add(new Option(m, m)));
+            const posSel = document.getElementById('dash-pos');
+            if (posSel.options.length === 1) appState.puntosDeVenta.forEach(p => posSel.add(new Option(p, p)));
+
+            const mFilter = monthSel.value;
+            const pFilter = posSel.value;
+
+            let table = getFactTable(currentGlobalYear);
+            if (mFilter !== 'Todos') table = table.filter(r => r.mes === mFilter);
+            if (pFilter !== 'Todos') table = table.filter(r => r.pdv === pFilter);
+            
+            let total = 0, pagado = 0;
+            let pdvTotals = {};
+            
+            let matrixMesPDV = {};
+            appState.puntosDeVenta.forEach(p => {
+                matrixMesPDV[p] = {};
+                appState.meses.forEach(m => matrixMesPDV[p][m] = 0);
+            });
+
+            let matrix = {}; 
+
+            table.forEach(r => {
+                total += r.importeParcial;
+                if(r.estado === 'Pagado') pagado += r.importeParcial;
+                pdvTotals[r.pdv] = (pdvTotals[r.pdv] || 0) + r.importeParcial;
+                
+                if(matrixMesPDV[r.pdv]) matrixMesPDV[r.pdv][r.mes] += r.importeParcial;
+
+                if (!matrix[r.concepto]) matrix[r.concepto] = { total: 0 };
+                matrix[r.concepto][r.pdv] = (matrix[r.concepto][r.pdv] || 0) + r.importeParcial;
+                matrix[r.concepto].total += r.importeParcial;
+            });
+
+            document.getElementById('kpi-dash-total').innerText = fmt(total);
+            document.getElementById('kpi-dash-pagado').innerText = fmt(pagado);
+            document.getElementById('kpi-dash-pendiente').innerText = fmt(total - pagado);
+            document.getElementById('kpi-dash-promedio').innerText = fmt(total / (new Date().getMonth()+1));
+
+            drawChart('chartPDV', 'doughnut', Object.keys(pdvTotals), Object.values(pdvTotals), true);
+
+            if(globalCharts['chartEvolucion']) globalCharts['chartEvolucion'].destroy();
+            const colors = ['#4f46e5', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'];
+            let evolDatasets = appState.puntosDeVenta.map((pdv, idx) => ({
+                label: pdv,
+                data: appState.meses.map(m => matrixMesPDV[pdv][m]),
+                borderColor: colors[idx % colors.length],
+                backgroundColor: 'transparent',
+                borderWidth: 2, tension: 0.3, pointBackgroundColor: '#fff'
+            }));
+
+            globalCharts['chartEvolucion'] = new Chart(document.getElementById('chartEvolucion'), {
+                type: 'line',
+                data: { labels: appState.meses, datasets: evolDatasets },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+            });
+
+            let cols = pFilter !== 'Todos' ? [pFilter] : appState.puntosDeVenta;
+
+            let thHtml = `<tr><th class="px-4 py-4 font-bold text-gray-700">Servicio / Concepto</th>`;
+            cols.forEach(c => thHtml += `<th class="px-4 py-4 text-right font-bold text-gray-700">${c}</th>`);
+            thHtml += `<th class="px-4 py-4 text-right font-black bg-gray-100 text-gray-800">Total General</th></tr>`;
+            document.getElementById('thead-matriz-dash').innerHTML = thHtml;
+
+            let tbodyHtml = '';
+            let sortedConcepts = Object.keys(matrix).sort((a, b) => matrix[b].total - matrix[a].total);
+            let grandTotals = { total: 0 };
+            cols.forEach(c => grandTotals[c] = 0);
+
+            sortedConcepts.forEach(c => {
+                let rowHtml = `<tr><td class="px-4 py-3 font-medium text-gray-900 border-r border-gray-50">${c}</td>`;
+                cols.forEach(col => {
+                    let val = matrix[c][col] || 0;
+                    grandTotals[col] += val;
+                    let pct = matrix[c].total > 0 ? ((val / matrix[c].total) * 100).toFixed(1) : 0;
+                    rowHtml += `<td class="px-4 py-3 text-right text-gray-600"><div class="font-bold">${fmt(val)}</div><div class="text-[10px] text-gray-400 font-semibold mt-0.5">${pct}%</div></td>`;
+                });
+                grandTotals.total += matrix[c].total;
+                rowHtml += `<td class="px-4 py-3 text-right bg-gray-50 border-l border-gray-100"><div class="font-black text-indigo-900">${fmt(matrix[c].total)}</div></td></tr>`;
+                tbodyHtml += rowHtml;
+            });
+
+            tbodyHtml += `<tr class="bg-indigo-50 border-t-2 border-indigo-200"><td class="px-4 py-4 font-black text-indigo-900">TOTALES GLOBALES</td>`;
+            cols.forEach(col => {
+                let globalPct = grandTotals.total > 0 ? ((grandTotals[col] / grandTotals.total) * 100).toFixed(1) : 0;
+                tbodyHtml += `<td class="px-4 py-4 text-right"><div class="font-black text-indigo-900">${fmt(grandTotals[col])}</div><div class="text-[10px] text-indigo-600 font-bold mt-0.5">${globalPct}%</div></td>`;
+            });
+            tbodyHtml += `<td class="px-4 py-4 text-right font-black text-indigo-900 bg-indigo-100">${fmt(grandTotals.total)}</td></tr>`;
+            document.getElementById('tbody-matriz-dash').innerHTML = tbodyHtml;
+        }
+
+        function renderComparativoInit() {
+            const cont = document.getElementById('comp-meses-container');
+            cont.innerHTML = appState.meses.map(m => `
+                <label class="flex items-center gap-1 bg-white border border-gray-300 px-3 py-1.5 rounded-full text-sm cursor-pointer hover:bg-indigo-50 transition-colors">
+                    <input type="checkbox" value="${m}" class="comp-cb accent-indigo-600" onchange="updateComparativo()">
+                    ${m}
+                </label>
+            `).join('');
+            
+            const currIdx = new Date().getMonth();
+            const prevIdx = currIdx === 0 ? 11 : currIdx - 1;
+            document.querySelectorAll('.comp-cb').forEach(cb => {
+                if(cb.value === appState.meses[currIdx] || cb.value === appState.meses[prevIdx]) cb.checked = true;
+            });
+            updateComparativo();
+        }
+
+        function updateComparativo() {
+            const selectedMonths = Array.from(document.querySelectorAll('.comp-cb:checked')).map(cb => cb.value);
+            const contTables = document.getElementById('comp-tables-container');
+            
+            if(selectedMonths.length === 0) {
+                contTables.innerHTML = '';
+                document.getElementById('diagnostico-text').innerText = "Selecciona al menos un mes.";
+                if(globalCharts['chartComparativo']) globalCharts['chartComparativo'].destroy();
+                return;
+            }
+
+            const table = getFactTable(currentGlobalYear);
+            let html = '';
+            let pdvs = [...appState.puntosDeVenta];
+            let totalesMes = {};
+            let chartDatasets = [];
+            const coloresB = ['#4f46e5', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#8b5cf6'];
+            
+            selectedMonths.forEach((mes, idx) => {
+                let factsMes = table.filter(r => r.mes === mes);
+                let pdvTot = {};
+                pdvs.forEach(p => pdvTot[p] = 0);
+                
+                let granTotal = 0;
+                factsMes.forEach(f => { pdvTot[f.pdv] = (pdvTot[f.pdv] || 0) + f.importeParcial; granTotal += f.importeParcial; });
+                totalesMes[mes] = granTotal;
+
+                chartDatasets.push({
+                    label: mes,
+                    data: pdvs.map(p => pdvTot[p]), 
+                    backgroundColor: coloresB[idx % coloresB.length],
+                    borderRadius: 4
+                });
+
+                html += `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="bg-gray-50 px-4 py-3 border-b text-center font-black text-gray-800">${mes} ${currentGlobalYear}</div>
+                    <table class="w-full text-left text-sm text-gray-600">
+                        <tbody class="divide-y divide-gray-100">
+                            ${pdvs.map(p => `<tr><td class="px-4 py-2 font-medium">${p}</td><td class="px-4 py-2 text-right font-bold text-gray-900">${fmt(pdvTot[p])}</td></tr>`).join('')}
+                        </tbody>
+                        <tfoot class="bg-gray-50 font-black text-indigo-900">
+                            <tr><td class="px-4 py-3">TOTAL</td><td class="px-4 py-3 text-right">${fmt(granTotal)}</td></tr>
+                        </tfoot>
+                    </table>
+                </div>`;
+            });
+
+            contTables.innerHTML = html;
+
+            if(globalCharts['chartComparativo']) globalCharts['chartComparativo'].destroy();
+            globalCharts['chartComparativo'] = new Chart(document.getElementById('chartComparativo'), {
+                type: 'bar',
+                data: { labels: pdvs, datasets: chartDatasets },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+            });
+
+            let txt = '';
+            if (selectedMonths.length === 1) txt = `En ${selectedMonths[0]}, el costo total fue de ${fmt(totalesMes[selectedMonths[0]])}. Se recomienda evaluar la rentabilidad del PDV con mayor porcentaje de carga.`;
+            else if (selectedMonths.length >= 2) {
+                const m1 = selectedMonths[0]; const m2 = selectedMonths[1];
+                const v1 = totalesMes[m1]; const v2 = totalesMes[m2];
+                if (v1 === 0 && v2 === 0) txt = "No hay datos suficientes para el análisis intermensual.";
+                else {
+                    const dif = v2 - v1;
+                    const pct = v1 === 0 ? 100 : (dif / v1) * 100;
+                    let tend = dif > 0 ? `un incremento del ${pct.toFixed(1)}%` : `una reducción del ${Math.abs(pct).toFixed(1)}%`;
+                    txt = `Comparando ${m1} vs ${m2}, el gasto total experimentó ${tend} (variación de ${fmt(Math.abs(dif))}).`;
+                }
+            }
+            document.getElementById('diagnostico-text').innerText = txt;
+        }
+
+        function renderCeo() {
+            const mes = document.getElementById('ceo-report-month').value;
+            const clave = `${currentGlobalYear}-${mes}`;
+            
+            const conf = appState.presupuestosCEO[clave] || {usd: 5000, cotizacion: ''};
+            document.getElementById('ceo-presupuesto-usd').value = conf.usd;
+            document.getElementById('ceo-cotizacion').value = conf.cotizacion;
+            
+            const usd = parseFloat(conf.usd) || 0;
+            const cotiz = parseFloat(conf.cotizacion) || 0;
+            const presupuestoARS = usd * cotiz;
+            
+            document.getElementById('lbl-ceo-comp-ars').innerText = fmt(presupuestoARS);
+
+            let ceoGastos = appState.gastos.filter(g => g.ano === currentGlobalYear && g.mesStr === mes && g.tipo === 'CEO');
+            let totalGastos = ceoGastos.reduce((acc, g) => acc + g.importeTotal, 0);
+            
+            document.getElementById('lbl-ceo-gasto').innerText = `+ ${fmt(totalGastos)}`;
+            
+            let totalLiquidar = presupuestoARS + totalGastos;
+            document.getElementById('lbl-ceo-total').innerText = fmt(totalLiquidar);
+
+            document.getElementById('tbody-ceo').innerHTML = ceoGastos.map(g => `
+                <tr>
+                    <td class="px-4 py-2">${g.fechaVto || g.ano}</td>
+                    <td class="px-4 py-2 font-medium">${g.concepto}</td>
+                    <td class="px-4 py-2 font-bold">${fmt(g.importeTotal)}</td>
+                    <td class="px-4 py-2 text-right">
+                        <button onclick="editGasto(${g.id})" class="text-indigo-600 text-xs">Editar</button>
+                        <button onclick="deleteGasto(${g.id})" class="text-red-600 text-xs ml-2">Borrar</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function guardarPresupuestoCEO() {
+            const mes = document.getElementById('ceo-report-month').value;
+            const clave = `${currentGlobalYear}-${mes}`;
+            appState.presupuestosCEO[clave] = {
+                usd: parseFloat(document.getElementById('ceo-presupuesto-usd').value) || 0,
+                cotizacion: parseFloat(document.getElementById('ceo-cotizacion').value) || 0
+            };
+            showToast('Valores en USD y Cotización guardados.');
+            renderCeo();
+        }
+
+        function renderConfig() {
+            document.getElementById('pdv-badges-container').innerHTML = appState.puntosDeVenta.map((p, i) => `
+                <div class="bg-gray-100 text-gray-800 text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-2 border border-gray-200 shadow-sm">
+                    ${p} <button onclick="removePDV(${i})" class="hover:text-red-600 focus:outline-none"><i data-lucide="x" class="w-3 h-3"></i></button>
+                </div>
+            `).join('');
+
+            let thead = `<tr><th class="px-3 py-3">Servicio Base</th>${appState.puntosDeVenta.map(p=>`<th class="px-2 py-3 text-center">% ${p}</th>`).join('')}<th class="px-3 py-3 text-center">Validez</th><th class="px-3 py-3 text-right">Acción</th></tr>`;
+            document.getElementById('thead-maestro').innerHTML = thead;
+
+            document.getElementById('tbody-maestro').innerHTML = appState.serviciosMaster.map(srv => {
+                let totalPct = appState.puntosDeVenta.reduce((acc, p) => acc + (srv.prorrateos[p]||0), 0);
+                let validBadge = totalPct === 100 ? `<span class="bg-green-100 text-green-700 font-bold px-2 py-1 rounded text-[10px]">OK (100%)</span>` : `<span class="bg-red-100 text-red-700 font-bold px-2 py-1 rounded text-[10px]">ERR (${totalPct}%)</span>`;
+                
+                let rowHtml = `<td class="px-3 py-3 font-bold text-gray-900">${srv.nombre}</td>`;
+                appState.puntosDeVenta.forEach(p => { rowHtml += `<td class="px-2 py-3 text-center text-gray-600">${srv.prorrateos[p]||0}%</td>`; });
+                
+                return `<tr>${rowHtml}<td class="px-3 py-3 text-center">${validBadge}</td>
+                    <td class="px-3 py-3 text-right">
+                        <button onclick="editServicioMaster(${srv.id})" class="text-indigo-600 font-bold text-xs hover:underline">Modificar</button>
+                    </td></tr>`;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function addPDV(e) {
+            e.preventDefault();
+            const input = document.getElementById('new-pdv-name');
+            const val = input.value.trim();
+            if(val && !appState.puntosDeVenta.includes(val)) {
+                appState.puntosDeVenta.push(val);
+                input.value = ''; renderConfig();
+            }
+        }
+        function removePDV(idx) {
+            if(confirm('¿Eliminar PDV? Los datos históricos quedarán, pero no podrás generar nuevos prorrateos hacia él.')) {
+                appState.puntosDeVenta.splice(idx, 1); renderConfig();
+            }
+        }
+
+        function openModalServicio() {
+            document.getElementById('modal-title').innerText = 'Maestro de Prorrateo';
+            document.getElementById('form-gasto').style.display = 'none';
+            document.getElementById('form-servicio').style.display = 'flex';
+            document.getElementById('form-servicio').reset();
+            document.getElementById('srv-id').value = '';
+            
+            const cont = document.getElementById('srv-prorrateo-inputs');
+            cont.innerHTML = appState.puntosDeVenta.map(p => `
+                <div class="bg-white p-2 rounded border border-gray-200">
+                    <label class="block text-[10px] text-gray-500 uppercase font-bold">${p}</label>
+                    <input type="number" data-pdv="${p}" class="pct-input w-full mt-1 border-none bg-transparent font-black text-indigo-900 focus:outline-none" value="0" min="0" max="100" oninput="calcSrvTotal()">
+                </div>
+            `).join('');
+            calcSrvTotal();
+            document.getElementById('modal-container').classList.add('modal-active');
+        }
+
+        window.calcSrvTotal = function() {
+            let t = 0;
+            document.querySelectorAll('.pct-input').forEach(i => t += (parseFloat(i.value)||0));
+            let el = document.getElementById('srv-total-pct');
+            el.innerText = `${t}%`; el.className = t === 100 ? 'text-green-600 font-black' : 'text-red-600 font-black';
+        }
+
+        window.editServicioMaster = function(id) {
+            openModalServicio();
+            const s = appState.serviciosMaster.find(x=>x.id==id);
+            document.getElementById('srv-id').value = s.id;
+            document.getElementById('srv-nombre').value = s.nombre;
+            document.querySelectorAll('.pct-input').forEach(i => i.value = s.prorrateos[i.getAttribute('data-pdv')] || 0);
+            calcSrvTotal();
+        }
+
+        function saveServicio(e) {
+            e.preventDefault();
+            const t = Array.from(document.querySelectorAll('.pct-input')).reduce((acc, i) => acc + (parseFloat(i.value)||0), 0);
+            if(t !== 100) { alert('El prorrateo debe sumar exactamente 100%.'); return; }
+
+            let pr = {};
+            document.querySelectorAll('.pct-input').forEach(i => pr[i.getAttribute('data-pdv')] = parseFloat(i.value)||0);
+
+            const id = document.getElementById('srv-id').value;
+            const obj = { nombre: document.getElementById('srv-nombre').value, prorrateos: pr };
+
+            if(id) Object.assign(appState.serviciosMaster.find(x=>x.id==id), obj);
+            else appState.serviciosMaster.push({ id: Date.now(), ...obj });
+
+            closeModal(); renderConfig();
+        }
+
+        function openModalGasto(tipo) {
+            document.getElementById('modal-title').innerText = `Registro Gasto: ${tipo}`;
+            document.getElementById('form-servicio').style.display = 'none';
+            document.getElementById('form-gasto').style.display = 'flex';
+            document.getElementById('form-gasto').reset();
+            
+            document.getElementById('gasto-id').value = '';
+            document.getElementById('gasto-tipo').value = tipo;
+            
+            const wSrv = document.getElementById('wrapper-servicio');
+            const wCpt = document.getElementById('wrapper-concepto');
+            const wPdv = document.getElementById('wrapper-pdv');
+            const impactSel = document.getElementById('gasto-mes-impacto');
+
+            wSrv.classList.add('hidden'); wCpt.classList.add('hidden'); wPdv.classList.add('hidden');
+            
+            impactSel.innerHTML = appState.meses.map(m => `<option value="${m}">${m}</option>`).join('');
+            if(tipo === 'CEO') impactSel.value = document.getElementById('ceo-report-month').value;
+            else impactSel.value = document.getElementById('carga-month').value;
+
+            if (tipo === 'Fijo') {
+                wSrv.classList.remove('hidden');
+                document.getElementById('gasto-servicio').innerHTML = appState.serviciosMaster.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
+            } else if (tipo === 'Variable') {
+                wCpt.classList.remove('hidden'); wPdv.classList.remove('hidden');
+                document.getElementById('gasto-pdv').innerHTML = appState.puntosDeVenta.map(p => `<option value="${p}">${p}</option>`).join('');
+            } else if (tipo === 'CEO') {
+                wCpt.classList.remove('hidden');
+            }
+
+            document.getElementById('pagos-container').innerHTML = ''; 
+            calcFaltaPagar();
+            document.getElementById('gasto-importe').addEventListener('input', calcFaltaPagar);
+            document.getElementById('modal-container').classList.add('modal-active');
+        }
+
+        window.editGasto = function(id) {
+            const g = appState.gastos.find(x=>x.id==id);
+            if(!g) return;
+            openModalGasto(g.tipo);
+            
+            document.getElementById('gasto-id').value = g.id;
+            document.getElementById('gasto-mes-impacto').value = g.mesStr;
+            document.getElementById('gasto-vto').value = g.fechaVto || '';
+            document.getElementById('gasto-pago-fecha').value = g.fechaPago || '';
+            document.getElementById('gasto-importe').value = g.importeTotal;
+            
+            if(g.tipo === 'Fijo') document.getElementById('gasto-servicio').value = g.servicioId;
+            else document.getElementById('gasto-concepto').value = g.concepto;
+            
+            if(g.tipo === 'Variable') {
+                let pdvAssigned = Object.keys(g.prorrateoAplicado).find(k => g.prorrateoAplicado[k] === 100);
+                if(pdvAssigned) document.getElementById('gasto-pdv').value = pdvAssigned;
+            }
+
+            const cont = document.getElementById('pagos-container');
+            cont.innerHTML = '';
+            if(g.pagos) {
+                g.pagos.forEach(p => {
+                    addPagoRow();
+                    const lastRow = cont.lastElementChild;
+                    lastRow.querySelector('select').value = p.metodo;
+                    lastRow.querySelector('input').value = p.monto;
+                });
+            }
+            calcFaltaPagar();
+        }
+
+        function saveGasto(e) {
+            e.preventDefault();
+            const id = document.getElementById('gasto-id').value;
+            const tipo = document.getElementById('gasto-tipo').value;
+            const importe = parseFloat(document.getElementById('gasto-importe').value) || 0;
+            
+            let pagos = []; let totalPagado = 0;
+            document.querySelectorAll('.pago-row').forEach(row => {
+                const met = row.querySelector('select').value;
+                const mnt = parseFloat(row.querySelector('input').value) || 0;
+                if(mnt > 0) { pagos.push({metodo: met, monto: mnt}); totalPagado += mnt; }
+            });
+
+            if(totalPagado > importe) { alert('El total pagado no puede superar el importe de la factura.'); return; }
+
+            let obj = {
+                tipo: tipo, mesStr: document.getElementById('gasto-mes-impacto').value, ano: currentGlobalYear,
+                fechaVto: document.getElementById('gasto-vto').value, fechaPago: document.getElementById('gasto-pago-fecha').value,
+                importeTotal: importe, estado: (totalPagado >= importe && importe > 0) ? 'Pagado' : 'Pendiente', pagos: pagos
+            };
+
+            if (tipo === 'Fijo') {
+                obj.servicioId = document.getElementById('gasto-servicio').value;
+                if(!id) {
+                    const mst = appState.serviciosMaster.find(s=>s.id == obj.servicioId);
+                    obj.prorrateoAplicado = JSON.parse(JSON.stringify(mst.prorrateos)); 
+                }
+            } else if (tipo === 'Variable') {
+                obj.concepto = document.getElementById('gasto-concepto').value;
+                obj.prorrateoAplicado = {}; obj.prorrateoAplicado[document.getElementById('gasto-pdv').value] = 100;
+            } else if (tipo === 'CEO') {
+                obj.concepto = document.getElementById('gasto-concepto').value;
+                obj.prorrateoAplicado = { 'Mauricio (CEO)': 100 };
+            }
+
+            if(id) {
+                let existing = appState.gastos.find(x=>x.id==id);
+                if(tipo==='Fijo') obj.prorrateoAplicado = existing.prorrateoAplicado;
+                Object.assign(existing, obj);
+            } else appState.gastos.push({ id: Date.now()+Math.random(), ...obj });
+
+            closeModal(); renderApp();
+        }
+
+        function deleteGasto(id) {
+            if(confirm('Eliminar permanentemente este registro?')) {
+                appState.gastos = appState.gastos.filter(g => g.id != id); renderApp();
+            }
+        }
+
+        function addPagoRow() {
+            const cont = document.getElementById('pagos-container');
+            const row = document.createElement('div');
+            row.className = 'pago-row flex gap-2 items-center bg-white p-2 rounded border border-gray-200';
+            const selOpts = appState.metodosPago.map(m => `<option value="${m}">${m}</option>`).join('');
+            row.innerHTML = `
+                <select class="flex-1 text-xs border border-gray-300 rounded p-2 outline-none">${selOpts}</select>
+                <input type="number" step="0.01" class="w-24 text-sm font-bold border border-gray-300 rounded p-2 text-right outline-none" placeholder="$0.00" oninput="calcFaltaPagar()">
+                <button type="button" onclick="removePagoRow(this)" class="text-red-500 hover:text-red-700 p-1"><i data-lucide="minus-circle" class="w-4 h-4"></i></button>
+            `;
+            cont.appendChild(row); lucide.createIcons();
+        }
+        function removePagoRow(btn) { btn.parentElement.remove(); calcFaltaPagar(); }
+        
+        function calcFaltaPagar() {
+            const tot = parseFloat(document.getElementById('gasto-importe').value) || 0;
+            let pagos = 0;
+            document.querySelectorAll('.pago-row input').forEach(i => pagos += (parseFloat(i.value)||0));
+            let falta = tot - pagos;
+            const el = document.getElementById('gasto-falta-pagar');
+            el.innerText = fmt(falta);
+            el.className = falta <= 0 ? 'text-sm font-bold text-green-600' : 'text-sm font-bold text-red-600';
+        }
+
+        function closeModal() { document.getElementById('modal-container').classList.remove('modal-active'); }
+
+        function drawChart(id, type, labels, data, legendRight = false) {
+            if(globalCharts[id]) globalCharts[id].destroy();
+            const ctx = document.getElementById(id);
+            if(!ctx) return;
+            const col = ['#4f46e5', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#8b5cf6'];
+            globalCharts[id] = new Chart(ctx, {
+                type: type,
+                data: { labels: labels, datasets: [{ data: data, backgroundColor: col, borderAlign: 'inner' }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: legendRight ? 'right' : 'top' } } }
+            });
+        }
+
+        // Modificada para generar un HTML semántico más limpio en el archivo exportado
+        function extractTableHTML(tbodyId, theadId, skipLastCol = true) {
+            let html = '<table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">';
+            if(theadId) {
+                const tr = document.getElementById(theadId).querySelector('tr');
+                if(tr) {
+                    html += '<thead style="background: #f8fafc; color: #475569; font-size: 12px; text-transform: uppercase;"><tr>';
+                    const ths = tr.querySelectorAll('th');
+                    const len = skipLastCol ? ths.length - 1 : ths.length;
+                    for(let i=0; i<len; i++) {
+                        const align = ths[i].classList.contains('text-right') ? 'right' : 'left';
+                        html += `<th style="padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: ${align};">${ths[i].innerHTML}</th>`;
+                    }
+                    html += '</tr></thead>';
+                }
+            } else {
+                if(tbodyId === 'tbody-ceo') html += '<thead style="background: #f8fafc; color: #475569; font-size: 12px; text-transform: uppercase;"><tr><th style="padding: 12px; border-bottom: 2px solid #e2e8f0;">Fecha</th><th style="padding: 12px; border-bottom: 2px solid #e2e8f0;">Concepto</th><th style="padding: 12px; border-bottom: 2px solid #e2e8f0;">Importe</th></tr></thead>';
+            }
+
+            const tbody = document.getElementById(tbodyId);
+            if(tbody) {
+                html += '<tbody style="color: #1e293b;">';
+                tbody.querySelectorAll('tr').forEach(tr => {
+                    html += '<tr>';
+                    const tds = tr.querySelectorAll('td');
+                    const len = skipLastCol ? tds.length - 1 : tds.length;
+                    for(let i=0; i<len; i++) {
+                        const align = tds[i].classList.contains('text-right') ? 'right' : 'left';
+                        let bgStyle = '';
+                        let fwStyle = 'normal';
+                        
+                        if(tds[i].classList.contains('bg-indigo-50')) bgStyle = 'background-color: #eff6ff;';
+                        if(tds[i].classList.contains('bg-indigo-100')) { bgStyle = 'background-color: #dbeafe;'; fwStyle = 'bold'; }
+                        
+                        let content = tds[i].innerHTML;
+                        if(content.includes('Pendiente')) content = '<span class="badge-pendiente">Pendiente</span>';
+                        else if(content.includes('Pagado')) content = '<span class="badge-pagado">Pagado</span>';
+                        
+                        html += `<td style="padding: 12px; border-bottom: 1px solid #f1f5f9; text-align: ${align}; ${bgStyle} font-weight: ${fwStyle};">${content}</td>`;
+                    }
+                    html += '</tr>';
+                });
+                html += '</tbody>';
+            }
+            html += '</table>';
+            return html;
+        }
+
+        // =========================================================
+        // NUEVA FUNCIÓN: EXPORTAR A HTML INTERACTIVO 
+        // =========================================================
+        function generarReporteHTML() {
+            closeModalExport();
+            showToast('Preparando documento interactivo...');
+
+            const prevTab = activeTab;
+
+            // 1. Mostrar las vistas ocultas en "secreto" para que Chart.js dibuje los gráficos
+            const vistas = ['carga', 'dashboard', 'comparativo', 'ceo', 'config'];
+            vistas.forEach(t => {
+                const el = document.getElementById(`view-${t}`);
+                el.style.display = 'block';
+                el.style.position = 'absolute';
+                el.style.visibility = 'hidden';
+                el.style.width = '1000px'; 
+            });
+
+            // 2. Forzar actualización de datos
+            renderDashboard(); renderComparativoInit(); renderCeo(); renderCarga();
+
+            // 3. Esperar a que se dibujen e iniciar exportación
+            setTimeout(() => {
+                const mesCarga = document.getElementById('carga-month').value;
+                const mesCEO = document.getElementById('ceo-report-month').value;
+
+                // Extraer imágenes de los gráficos (ya dibujados)
+                let imgEvol = '', imgPDV = '', imgComp = '';
+                const cEvol = document.getElementById('chartEvolucion');
+                const cPDV = document.getElementById('chartPDV');
+                const cComp = document.getElementById('chartComparativo');
+                
+                if(cEvol && cEvol.width > 0) imgEvol = cEvol.toDataURL('image/png', 1.0);
+                if(cPDV && cPDV.width > 0) imgPDV = cPDV.toDataURL('image/png', 1.0);
+                if(cComp && cComp.width > 0) imgComp = cComp.toDataURL('image/png', 1.0);
+
+                // Revertir las vistas a como estaban
+                vistas.forEach(t => {
+                    const el = document.getElementById(`view-${t}`);
+                    el.style.display = 'none';
+                    el.style.position = '';
+                    el.style.visibility = '';
+                    el.style.width = '';
+                });
+                changeTab(prevTab);
+
+                // 4. Armar el documento final en HTML
+                let html = `<!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Informe Ejecutivo Modashop - ${currentGlobalYear}</title>
+                    <script src="https://cdn.tailwindcss.com"><\/script>
+                    <style>
+                        body { background-color: #f8fafc; color: #0f172a; font-family: ui-sans-serif, system-ui, sans-serif; }
+                        .card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); margin-bottom: 24px; border: 1px solid #e2e8f0; }
+                        .badge-pendiente { color: #b91c1c; background: #fef2f2; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; border: 1px solid #fecaca; display: inline-block;}
+                        .badge-pagado { color: #15803d; background: #f0fdf4; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; border: 1px solid #bbf7d0; display: inline-block;}
+                        
+                        /* Reglas perfectas para impresión en PDF Nativo */
+                        @media print {
+                            body { background-color: white; padding: 0 !important; }
+                            .card { box-shadow: none; border: 1px solid #e2e8f0; break-inside: avoid; margin-bottom: 20px; }
+                            .no-print { display: none !important; }
+                            img { max-height: 250px !important; }
+                        }
+                    </style>
+                </head>
+                <body class="p-4 md:p-8 max-w-5xl mx-auto">
+                    
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 border-b-4 border-indigo-600 pb-6 gap-4">
+                        <div>
+                            <h1 class="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">INFORME FINANCIERO EJECUTIVO</h1>
+                            <p class="text-slate-500 mt-1 font-medium text-lg">MODASHOP - Consolidado Operativo y Gestión</p>
+                        </div>
+                        <div class="text-left md:text-right">
+                            <p class="text-xl font-bold text-indigo-700">Periodo Fiscal: ${currentGlobalYear}</p>
+                            <p class="text-sm text-slate-500">Emisión: ${new Date().toLocaleDateString('es-AR')}</p>
+                            <button onclick="window.print()" class="no-print mt-3 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-md transition-colors cursor-pointer flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                                Imprimir / Guardar a PDF
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                if (document.getElementById('chk-pdf-dash').checked) {
+                    html += `
+                    <div class="card">
+                        <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-2">1. Resumen Global (Dashboard Anual)</h2>
+                        
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div class="text-xs font-bold text-slate-500 uppercase mb-1">Total Gastos</div>
+                                <div class="text-2xl font-black text-slate-900">${document.getElementById('kpi-dash-total').innerText}</div>
+                            </div>
+                            <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                                <div class="text-xs font-bold text-green-700 uppercase mb-1">Pagado</div>
+                                <div class="text-2xl font-black text-green-800">${document.getElementById('kpi-dash-pagado').innerText}</div>
+                            </div>
+                            <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+                                <div class="text-xs font-bold text-red-700 uppercase mb-1">Deuda / Pendiente</div>
+                                <div class="text-2xl font-black text-red-800">${document.getElementById('kpi-dash-pendiente').innerText}</div>
+                            </div>
+                            <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-200">
+                                <div class="text-xs font-bold text-indigo-700 uppercase mb-1">Promedio Mensual</div>
+                                <div class="text-2xl font-black text-indigo-800">${document.getElementById('kpi-dash-promedio').innerText}</div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                            <div class="border border-slate-200 rounded-xl p-4 flex flex-col items-center">
+                                <h3 class="text-sm font-bold text-slate-700 mb-4 w-full text-center">Evolución Anual</h3>
+                                ${imgEvol ? `<img src="${imgEvol}" class="w-full max-w-md h-auto object-contain" />` : '<p class="text-slate-400 text-sm">Gráfico no disponible</p>'}
+                            </div>
+                            <div class="border border-slate-200 rounded-xl p-4 flex flex-col items-center">
+                                <h3 class="text-sm font-bold text-slate-700 mb-4 w-full text-center">Distribución Global</h3>
+                                ${imgPDV ? `<img src="${imgPDV}" class="w-full max-w-sm h-auto object-contain" />` : '<p class="text-slate-400 text-sm">Gráfico no disponible</p>'}
+                            </div>
+                        </div>
+
+                        <h3 class="text-md font-bold text-slate-800 mb-3">Matriz Operativa de Gastos</h3>
+                        <div class="overflow-x-auto rounded-xl border border-slate-200">
+                            ${extractTableHTML('tbody-matriz-dash', 'thead-matriz-dash', false)}
+                        </div>
+                    </div>
+                    `;
+                }
+
+                if (document.getElementById('chk-pdf-ceo').checked) {
+                    html += `
+                    <div class="card">
+                        <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-2">2. Área CEO y Liquidación (${mesCEO})</h2>
+                        <div class="bg-blue-50 p-5 rounded-xl mb-6 border border-blue-100 shadow-sm">
+                            <div class="flex justify-between items-center text-sm mb-3 pb-2 border-b border-blue-100">
+                                <span class="text-blue-900 font-medium">Compromiso Asignado (USD / Cotización):</span> 
+                                <span class="font-bold text-blue-900">USD ${document.getElementById('ceo-presupuesto-usd').value} / $${document.getElementById('ceo-cotizacion').value}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm mb-2">
+                                <span class="text-slate-600">Equivalente ARS:</span> 
+                                <span class="font-bold text-slate-800">${document.getElementById('lbl-ceo-comp-ars').innerText}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-sm mb-4">
+                                <span class="text-slate-600">Gastos Reales Asignados al CEO:</span> 
+                                <span class="font-bold text-blue-700">${document.getElementById('lbl-ceo-gasto').innerText}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-lg md:text-xl font-black text-emerald-800 bg-white p-3 rounded-lg border border-emerald-100 shadow-sm">
+                                <span>Total a Liquidar:</span> 
+                                <span>${document.getElementById('lbl-ceo-total').innerText}</span>
+                            </div>
+                        </div>
+                        
+                        <h3 class="text-md font-bold text-slate-800 mb-3">Historial de Gastos Directos CEO</h3>
+                        <div class="overflow-x-auto rounded-xl border border-slate-200">
+                            ${extractTableHTML('tbody-ceo', null, true)}
+                        </div>
+                    </div>
+                    `;
+                }
+
+                if (document.getElementById('chk-pdf-comp').checked) {
+                    html += `
+                    <div class="card">
+                        <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-2">3. Diagnóstico y Variación Estratégica</h2>
+                        
+                        <div class="bg-indigo-50 p-5 rounded-xl border-l-4 border-indigo-500 mb-6">
+                            <h4 class="text-xs font-black text-indigo-800 uppercase mb-2">Análisis de Inteligencia de Negocio</h4>
+                            <p class="text-sm text-indigo-900 leading-relaxed font-medium">${document.getElementById('diagnostico-text').innerText}</p>
+                        </div>
+
+                        <div class="border border-slate-200 rounded-xl p-4 flex flex-col items-center">
+                            <h3 class="text-sm font-bold text-slate-700 mb-4 w-full text-center">Comparativa Gráfica Intermensual</h3>
+                            ${imgComp ? `<img src="${imgComp}" class="w-full max-w-2xl h-auto object-contain" />` : '<p class="text-slate-400 text-sm">Gráfico no disponible</p>'}
+                        </div>
+                    </div>
+                    `;
+                }
+
+                if (document.getElementById('chk-pdf-carga').checked) {
+                    html += `
+                    <div class="card">
+                        <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-2">4. Detalle Completo de Operaciones (${mesCarga})</h2>
+                        <div class="overflow-x-auto rounded-xl border border-slate-200">
+                            ${extractTableHTML('tbody-carga', 'thead-carga', true)}
+                        </div>
+                    </div>
+                    `;
+                }
+
+                html += `
+                    <div class="text-center text-xs text-slate-400 mt-8 pb-8">
+                        <p>Documento autogenerado por <strong>Sistema Gerencial Modashop</strong>.</p>
+                    </div>
+                </body>
+                </html>
+                `;
+
+                // 5. Descargar el archivo HTML
+                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Reporte_Ejecutivo_Modashop_${currentGlobalYear}.html`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showToast('¡Reporte Web descargado exitosamente!');
+            }, 600);
+        }
+
+        function seedDataPrueba() {
+            appState.presupuestosCEO["2026-Agosto"] = {usd: 5000, cotizacion: 1200};
+            const pr = appState.serviciosMaster[0].prorrateos;
+            appState.gastos.push({ id: 2, tipo: 'Fijo', mesStr: 'Agosto', ano: '2026', servicioId: 1, importeTotal: 250000, estado: 'Pendiente', prorrateoAplicado:JSON.parse(JSON.stringify(pr)), fechaVto:'2026-08-10' });
+        }
+    </script>
+</body>
+</html>
