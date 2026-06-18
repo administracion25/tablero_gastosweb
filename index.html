@@ -447,13 +447,13 @@
         } else {
             // 👇 Reemplaza con tus credenciales si hospedas esto en tu propio servidor 👇
             const firebaseConfig = {
-                apiKey: "AIzaSyDH5op00j6kGektsze1m_6O6mPY5AGxj-Y",
-  authDomain: "tablero-gastosweb.firebaseapp.com",
-  projectId: "tablero-gastosweb",
-  storageBucket: "tablero-gastosweb.firebasestorage.app",
-  messagingSenderId: "252729514203",
-  appId: "1:252729514203:web:d5d902b4781bfd41d594fe"
-};
+                apiKey: "TU_API_KEY",
+                authDomain: "TU_PROYECTO.firebaseapp.com",
+                projectId: "TU_PROYECTO",
+                storageBucket: "TU_PROYECTO.appspot.com",
+                messagingSenderId: "123456789",
+                appId: "1:123456789:web:abcdef"
+            };
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
@@ -532,15 +532,16 @@
                 try {
                     document.getElementById('last-sync').innerText = 'Autenticando...';
                     
-                    // Manejo de Auth (funciona tanto aquí adentro como afuera)
+                    // Manejo de Auth: Capturamos directamente el UserCredential para asegurar que no sea null
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
+                        const userCred = await signInWithCustomToken(auth, __initial_auth_token);
+                        currentUser = userCred.user;
                     } else {
-                        await signInAnonymously(auth);
+                        const userCred = await signInAnonymously(auth);
+                        currentUser = userCred.user;
                     }
                     
-                    currentUser = auth.currentUser;
-                    if (!currentUser) throw new Error("No se pudo iniciar sesión.");
+                    if (!currentUser) throw new Error("No se pudo iniciar sesión en Firebase.");
 
                     // Referencia estricta solicitada: Colección 'boards', Documento 'main_board'
                     // Utilizamos la ruta pública obligatoria para evitar bloqueos de permisos.
@@ -580,9 +581,10 @@
                         }
                         isFirstSync = false;
                     }, (error) => {
-                        console.error("Error en la sincronización en tiempo real:", error);
-                        document.getElementById('last-sync').innerText = 'Error de conexión';
+                        console.error("LÍNEA DE ERROR (onSnapshot): La lectura en tiempo real fue bloqueada.", error);
+                        document.getElementById('last-sync').innerText = `Error Sync: ${error.code}`;
                         document.getElementById('sync-status').classList.add('hidden');
+                        showToast(`Error Firestore: ${error.code || error.message}`);
                     });
 
                 } catch (e) {
@@ -615,8 +617,8 @@
                 document.getElementById('last-sync').innerText = `Últ. guardado: ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
                 showToast('¡Datos guardados con éxito!');
             } catch(e) { 
-                console.error("Error crítico al guardar en Firestore:", e);
-                showToast('Error al guardar. Verifica la consola.'); 
+                console.error("LÍNEA DE ERROR (setDoc): Fallo al escribir en Firestore. Detalles:", e);
+                showToast(`Error Firebase: ${e.code || e.message}`); 
             }
         }
 
@@ -999,9 +1001,9 @@
             }
         }
         function removePDV(idx) {
-            if(confirm('¿Eliminar PDV? Los datos históricos quedarán, pero no podrás generar nuevos prorrateos hacia él.')) {
-                appState.puntosDeVenta.splice(idx, 1); renderConfig();
-            }
+            // Nota: Se elimina confirm() porque bloquea iframes y entornos embebidos
+            appState.puntosDeVenta.splice(idx, 1); 
+            renderConfig();
         }
 
         function openModalServicio() {
@@ -1168,9 +1170,9 @@
         }
 
         function deleteGasto(id) {
-            if(confirm('Eliminar permanentemente este registro?')) {
-                appState.gastos = appState.gastos.filter(g => g.id != id); renderApp();
-            }
+            // Nota: Se elimina confirm() porque bloquea iframes y entornos embebidos
+            appState.gastos = appState.gastos.filter(g => g.id != id); 
+            renderApp();
         }
 
         function addPagoRow() {
